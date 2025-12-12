@@ -1,0 +1,29 @@
+{
+  "name": "ollama-amazon-parser",
+  "version": "1.0.0",
+  "description": "AI-powered Amazon product page parser using Ollama",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "NODE_OPTIONS='--max-http-header-size=16384' node --watch server.js",
+    "kill": "lsof -ti:3001 | xargs kill -9 2>/dev/null || true",
+    "dev:clean": "npm run kill && sleep 1 && npm run dev"
+  },
+  "keywords": [
+    "ollama",
+    "amazon",
+    "parser",
+    "ai"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.2",
+    "ollama": "^0.5.8",
+    "dotenv": "^16.3.1",
+    "cors": "^2.8.5"
+  }
+}
+

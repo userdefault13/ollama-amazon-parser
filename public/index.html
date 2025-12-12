@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ollama Amazon Parser</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 0.9rem;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #fee;
+            border: 1px solid #fcc;
+            color: #c33;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .error.active {
+            display: block;
+        }
+
+        .results {
+            margin-top: 30px;
+            display: none;
+        }
+
+        .results.active {
+            display: block;
+        }
+
+        .product-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .product-image {
+            max-width: 200px;
+            max-height: 200px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .product-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .product-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .info-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .info-label {
+            font-size: 0.85rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+
+        .info-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .json-view {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            margin-top: 20px;
+        }
+
+        .json-view pre {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 Ollama Amazon Parser</h1>
+            <p>AI-powered product information extraction</p>
+        </div>
+        <div class="content">
+            <form id="parserForm">
+                <div class="form-group">
+                    <label for="amazonUrl">Amazon Product URL or ASIN</label>
+                    <input 
+                        type="text" 
+                        id="amazonUrl" 
+                        name="url" 
+                        placeholder="https://www.amazon.com/dp/B08XYZ1234 or B08XYZ1234"
+                        required
+                    >
+                </div>
+                <button type="submit" id="submitBtn">Parse Product</button>
+            </form>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Parsing product with Ollama... This may take a moment.</p>
+            </div>
+
+            <div class="error" id="error"></div>
+
+            <div class="results" id="results">
+                <div class="product-card">
+                    <h2 class="product-title" id="productTitle"></h2>
+                    <img id="productImage" class="product-image" alt="Product image" style="display: none;">
+                    <div class="product-info" id="productInfo"></div>
+                </div>
+                <details>
+                    <summary style="cursor: pointer; padding: 10px; background: #f0f0f0; border-radius: 8px; margin-top: 10px;">
+                        View Raw JSON
+                    </summary>
+                    <div class="json-view">
+                        <pre id="jsonOutput"></pre>
+                    </div>
+                </details>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('parserForm');
+        const loading = document.getElementById('loading');
+        const error = document.getElementById('error');
+        const results = document.getElementById('results');
+        const submitBtn = document.getElementById('submitBtn');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const url = document.getElementById('amazonUrl').value.trim();
+            if (!url) return;
+
+            // Reset UI
+            loading.classList.add('active');
+            error.classList.remove('active');
+            results.classList.remove('active');
+            submitBtn.disabled = true;
+
+            try {
+                const response = await fetch('/parse', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'Failed to parse product');
+                }
+
+                // Display results
+                displayResults(data.data);
+                
+            } catch (err) {
+                error.textContent = err.message;
+                error.classList.add('active');
+            } finally {
+                loading.classList.remove('active');
+                submitBtn.disabled = false;
+            }
+        });
+
+        function displayResults(product) {
+            // Title
+            document.getElementById('productTitle').textContent = product.title || 'No title found';
+
+            // Image
+            const img = document.getElementById('productImage');
+            if (product.thumbnail) {
+                img.src = product.thumbnail;
+                img.style.display = 'block';
+            } else {
+                img.style.display = 'none';
+            }
+
+            // Info items
+            const infoItems = [];
+            
+            if (product.asin) infoItems.push({ label: 'ASIN', value: product.asin });
+            if (product.type) infoItems.push({ label: 'Type', value: product.type });
+            if (product.price !== null) infoItems.push({ label: 'Price', value: `$${product.price}` });
+            if (product.brand) infoItems.push({ label: 'Brand', value: product.brand });
+            if (product.size) infoItems.push({ label: 'Size', value: product.size });
+            if (product.quantity !== null) infoItems.push({ label: 'Quantity', value: product.quantity });
+            if (product.printNames && Array.isArray(product.printNames) && product.printNames.length > 0) {
+                infoItems.push({ 
+                    label: 'Print Names', 
+                    value: product.printNames.join(', ') 
+                });
+            }
+            if (product.dimensions) infoItems.push({ label: 'Dimensions', value: product.dimensions });
+            if (product.rollWidth && product.rollLength) {
+                infoItems.push({ label: 'Roll Dimensions', value: `${product.rollWidth}" × ${product.rollLength}'` });
+            }
+            if (product.url) {
+                infoItems.push({ 
+                    label: 'Amazon URL', 
+                    value: `<a href="${product.url}" target="_blank" style="color: #667eea;">View on Amazon</a>` 
+                });
+            }
+
+            const infoHtml = infoItems.map(item => `
+                <div class="info-item">
+                    <div class="info-label">${item.label}</div>
+                    <div class="info-value">${item.value}</div>
+                </div>
+            `).join('');
+
+            document.getElementById('productInfo').innerHTML = infoHtml;
+
+            // Description
+            if (product.description) {
+                document.getElementById('productInfo').innerHTML += `
+                    <div class="info-item" style="grid-column: 1 / -1;">
+                        <div class="info-label">Description</div>
+                        <div class="info-value" style="font-weight: normal;">${product.description}</div>
+                    </div>
+                `;
+            }
+
+            // Rolls array (if available)
+            if (product.rolls && Array.isArray(product.rolls) && product.rolls.length > 0) {
+                let rollsHtml = '<div style="display: flex; flex-direction: column; gap: 10px;">';
+                product.rolls.forEach((roll, index) => {
+                    rollsHtml += `
+                        <div style="border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px; background: #fafafa;">
+                            <div style="font-weight: 600; color: #667eea; margin-bottom: 6px;">Roll ${roll.rollNumber}</div>
+                            <div style="font-size: 0.9rem; color: #666;">
+                                ${roll.printName ? `<div><strong>Print:</strong> ${roll.printName}</div>` : ''}
+                                <div><strong>On Hand:</strong> ${roll.onHand || 0} sqft</div>
+                                <div><strong>Max Area:</strong> ${roll.maxArea || 0} sqft</div>
+                                ${roll.hasReverseSide ? '<div><strong>Has Reverse Side:</strong> Yes</div>' : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+                rollsHtml += '</div>';
+                
+                document.getElementById('productInfo').innerHTML += `
+                    <div class="info-item" style="grid-column: 1 / -1;">
+                        <div class="info-label">Rolls (${product.rolls.length})</div>
+                        <div class="info-value" style="font-weight: normal;">${rollsHtml}</div>
+                    </div>
+                `;
+            }
+
+            // JSON output
+            document.getElementById('jsonOutput').textContent = JSON.stringify(product, null, 2);
+
+            results.classList.add('active');
+        }
+    </script>
+</body>
+</html>
