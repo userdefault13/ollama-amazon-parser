@@ -323,12 +323,6 @@
             if (product.brand) infoItems.push({ label: 'Brand', value: product.brand });
             if (product.size) infoItems.push({ label: 'Size', value: product.size });
             if (product.quantity !== null) infoItems.push({ label: 'Quantity', value: product.quantity });
-            if (product.printNames && Array.isArray(product.printNames) && product.printNames.length > 0) {
-                infoItems.push({ 
-                    label: 'Print Names', 
-                    value: product.printNames.join(', ') 
-                });
-            }
             if (product.dimensions) infoItems.push({ label: 'Dimensions', value: product.dimensions });
             if (product.rollWidth && product.rollLength) {
                 infoItems.push({ label: 'Roll Dimensions', value: `${product.rollWidth}" × ${product.rollLength}'` });
@@ -355,32 +349,6 @@
                     <div class="info-item" style="grid-column: 1 / -1;">
                         <div class="info-label">Description</div>
                         <div class="info-value" style="font-weight: normal;">${product.description}</div>
-                    </div>
-                `;
-            }
-
-            // Rolls array (if available)
-            if (product.rolls && Array.isArray(product.rolls) && product.rolls.length > 0) {
-                let rollsHtml = '<div style="display: flex; flex-direction: column; gap: 10px;">';
-                product.rolls.forEach((roll, index) => {
-                    rollsHtml += `
-                        <div style="border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px; background: #fafafa;">
-                            <div style="font-weight: 600; color: #667eea; margin-bottom: 6px;">Roll ${roll.rollNumber}</div>
-                            <div style="font-size: 0.9rem; color: #666;">
-                                ${roll.printName ? `<div><strong>Print:</strong> ${roll.printName}</div>` : ''}
-                                <div><strong>On Hand:</strong> ${roll.onHand || 0} sqft</div>
-                                <div><strong>Max Area:</strong> ${roll.maxArea || 0} sqft</div>
-                                ${roll.hasReverseSide ? '<div><strong>Has Reverse Side:</strong> Yes</div>' : ''}
-                            </div>
-                        </div>
-                    `;
-                });
-                rollsHtml += '</div>';
-                
-                document.getElementById('productInfo').innerHTML += `
-                    <div class="info-item" style="grid-column: 1 / -1;">
-                        <div class="info-label">Rolls (${product.rolls.length})</div>
-                        <div class="info-value" style="font-weight: normal;">${rollsHtml}</div>
                     </div>
                 `;
             }

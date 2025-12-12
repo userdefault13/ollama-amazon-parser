@@ -45,6 +45,10 @@ export function createParsePrompt(extractedText, asin, url) {
     textContent += '\n'
   }
   
+  if (extractedText.thumbnail) {
+    textContent += `THUMBNAIL IMAGE: ${extractedText.thumbnail}\n\n`
+  }
+  
   if (!textContent.trim()) {
     textContent = 'No product information extracted from HTML.'
   }

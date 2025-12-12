@@ -53,6 +53,30 @@ function extractProductText(html) {
     extracted.price = priceDiv[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
   }
   
+  // 3.5. Extract thumbnail image from imgTagWrapperId
+  const imgWrapperDiv = html.match(/<div[^>]*id=["']imgTagWrapperId["'][^>]*>([\s\S]*?)<\/div>/i)
+  if (imgWrapperDiv) {
+    // Find img element within this div - check both src and data-src (for lazy-loaded images)
+    const imgMatch = imgWrapperDiv[1].match(/<img[^>]*>/i)
+    if (imgMatch) {
+      // Try data-src first (often used for lazy loading), then src
+      const dataSrcMatch = imgMatch[0].match(/data-src=["']([^"']+)["']/i)
+      const srcMatch = imgMatch[0].match(/src=["']([^"']+)["']/i)
+      const imgSrc = (dataSrcMatch && dataSrcMatch[1]) || (srcMatch && srcMatch[1])
+      
+      if (imgSrc) {
+        let finalImgSrc = imgSrc
+        // Ensure it's a full URL (Amazon sometimes uses relative URLs)
+        if (finalImgSrc.startsWith('//')) {
+          finalImgSrc = 'https:' + finalImgSrc
+        } else if (finalImgSrc.startsWith('/')) {
+          finalImgSrc = 'https://www.amazon.com' + finalImgSrc
+        }
+        extracted.thumbnail = finalImgSrc
+      }
+    }
+  }
+  
   // 4. Extract table data from poExpander (heading: value pairs)
   const poExpander = html.match(/<div[^>]*id=["']poExpander["'][^>]*>([\s\S]*?)<\/div>/i)
   if (poExpander) {
@@ -73,20 +97,61 @@ function extractProductText(html) {
     }
   }
   
-  // 5. Extract table data from prodDetails (same structure)
-  const prodDetails = html.match(/<div[^>]*id=["']prodDetails["'][^>]*>([\s\S]*?)<\/div>/i) ||
-                      html.match(/<table[^>]*id=["']productDetails[^>]*>([\s\S]*?)<\/table>/i)
-  if (prodDetails) {
-    const tableMatch = prodDetails[1].match(/<table[^>]*>([\s\S]*?)<\/table>/i) || [null, prodDetails[1]]
-    if (tableMatch[1]) {
+  // 5. Extract table data from productDetails_feature_div (primary location for product details table)
+  const productDetailsFeatureDiv = html.match(/<div[^>]*id=["']productDetails_feature_div["'][^>]*>([\s\S]*?)<\/div>/i)
+  if (productDetailsFeatureDiv) {
+    // Find table within this div (look for productDetails table or any table)
+    const tableMatch = productDetailsFeatureDiv[1].match(/<table[^>]*id=["']productDetails[^>]*>([\s\S]*?)<\/table>/i) ||
+                       productDetailsFeatureDiv[1].match(/<table[^>]*class=["'][^"]*prodDetTable[^"]*["'][^>]*>([\s\S]*?)<\/table>/i) ||
+                       productDetailsFeatureDiv[1].match(/<table[^>]*>([\s\S]*?)<\/table>/i)
+    if (tableMatch && tableMatch[1]) {
       const trMatches = [...tableMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)]
       if (!extracted.productDetails) extracted.productDetails = {}
       for (const tr of trMatches) {
+        // Try th/td pattern first (more common in product details tables)
+        const thMatch = tr[1].match(/<th[^>]*>([\s\S]*?)<\/th>/i)
         const tdMatches = [...tr[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)]
-        if (tdMatches.length >= 2) {
+        
+        if (thMatch && tdMatches.length >= 1) {
+          // Pattern: <th>heading</th><td>value</td>
+          const heading = thMatch[1].replace(/<[^>]+>/g, '').trim()
+          const value = tdMatches[0][1].replace(/<[^>]+>/g, '').trim()
+          if (heading && value) {
+            extracted.productDetails[heading] = value
+          }
+        } else if (tdMatches.length >= 2) {
+          // Pattern: <td>heading</td><td>value</td>
           const heading = tdMatches[0][1].replace(/<[^>]+>/g, '').trim()
           const value = tdMatches[1][1].replace(/<[^>]+>/g, '').trim()
           if (heading && value) {
+            extracted.productDetails[heading] = value
+          }
+        }
+      }
+    }
+  }
+  
+  // 6. Also try extracting from prodDetails div (fallback)
+  const prodDetails = html.match(/<div[^>]*id=["']prodDetails["'][^>]*>([\s\S]*?)<\/div>/i)
+  if (prodDetails && (!extracted.productDetails || Object.keys(extracted.productDetails).length === 0)) {
+    const tableMatch = prodDetails[1].match(/<table[^>]*>([\s\S]*?)<\/table>/i)
+    if (tableMatch && tableMatch[1]) {
+      const trMatches = [...tableMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)]
+      if (!extracted.productDetails) extracted.productDetails = {}
+      for (const tr of trMatches) {
+        const thMatch = tr[1].match(/<th[^>]*>([\s\S]*?)<\/th>/i)
+        const tdMatches = [...tr[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)]
+        
+        if (thMatch && tdMatches.length >= 1) {
+          const heading = thMatch[1].replace(/<[^>]+>/g, '').trim()
+          const value = tdMatches[0][1].replace(/<[^>]+>/g, '').trim()
+          if (heading && value && !extracted.productDetails[heading]) {
+            extracted.productDetails[heading] = value
+          }
+        } else if (tdMatches.length >= 2) {
+          const heading = tdMatches[0][1].replace(/<[^>]+>/g, '').trim()
+          const value = tdMatches[1][1].replace(/<[^>]+>/g, '').trim()
+          if (heading && value && !extracted.productDetails[heading]) {
             extracted.productDetails[heading] = value
           }
         }
@@ -187,6 +252,7 @@ export async function parseAmazonProduct(ollamaClient, model, url, asin, html) {
     hasTitle: !!extractedText.title,
     hasDescription: !!extractedText.description,
     hasPrice: !!extractedText.price,
+    hasThumbnail: !!extractedText.thumbnail,
     productDetailsCount: extractedText.productDetails ? Object.keys(extractedText.productDetails).length : 0
   })
   
@@ -316,7 +382,7 @@ export async function parseAmazonProduct(ollamaClient, model, url, asin, html) {
       rollWidth: productData.rollWidth !== undefined ? productData.rollWidth : null,
       printNames: Array.isArray(productData.printNames) ? productData.printNames : (productData.printNames === null ? null : []),
       rolls: Array.isArray(productData.rolls) ? productData.rolls : (productData.rolls === null ? null : []),
-      thumbnail: productData.thumbnail || null,
+      thumbnail: productData.thumbnail || extractedText.thumbnail || null,
       images: Array.isArray(productData.images) ? productData.images : [],
       url: productData.url || (productAsin ? `https://www.amazon.com/dp/${productAsin}` : null)
     }
