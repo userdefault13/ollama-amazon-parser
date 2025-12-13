@@ -56,13 +56,16 @@ function extractProductText(html) {
   // 3.5. Extract thumbnail image from imgTagWrapperId
   const imgWrapperDiv = html.match(/<div[^>]*id=["']imgTagWrapperId["'][^>]*>([\s\S]*?)<\/div>/i)
   if (imgWrapperDiv) {
-    // Find img element within this div - check both src and data-src (for lazy-loaded images)
+    // Find img element within this div - check data-old-hires (highest quality), then data-src, then src
     const imgMatch = imgWrapperDiv[1].match(/<img[^>]*>/i)
     if (imgMatch) {
-      // Try data-src first (often used for lazy loading), then src
+      // Try data-old-hires first (highest quality), then data-src (lazy loading), then src
+      const dataOldHiresMatch = imgMatch[0].match(/data-old-hires=["']([^"']+)["']/i)
       const dataSrcMatch = imgMatch[0].match(/data-src=["']([^"']+)["']/i)
       const srcMatch = imgMatch[0].match(/src=["']([^"']+)["']/i)
-      const imgSrc = (dataSrcMatch && dataSrcMatch[1]) || (srcMatch && srcMatch[1])
+      const imgSrc = (dataOldHiresMatch && dataOldHiresMatch[1]) || 
+                     (dataSrcMatch && dataSrcMatch[1]) || 
+                     (srcMatch && srcMatch[1])
       
       if (imgSrc) {
         let finalImgSrc = imgSrc
@@ -73,6 +76,7 @@ function extractProductText(html) {
           finalImgSrc = 'https://www.amazon.com' + finalImgSrc
         }
         extracted.thumbnail = finalImgSrc
+        console.log('📸 Extracted thumbnail from imgTagWrapperId:', finalImgSrc.substring(0, 100) + '...')
       }
     }
   }
@@ -368,6 +372,28 @@ export async function parseAmazonProduct(ollamaClient, model, url, asin, html) {
     }
     
     // Clean and normalize data
+    // Try to extract rollLength and rollWidth from productDetails if Ollama didn't extract them
+    let finalRollLength = productData.rollLength !== undefined ? productData.rollLength : null
+    let finalRollWidth = productData.rollWidth !== undefined ? productData.rollWidth : null
+    
+    // If not found in Ollama response, try to extract from productDetails text
+    if ((finalRollLength === null || finalRollWidth === null) && extractedText.productDetails) {
+      const productDetailsText = JSON.stringify(extractedText.productDetails)
+      // Look for pattern like "30\" x 8.8'" or "30 inches x 8.8 feet" or "30\" x 8.8'"
+      const dimensionMatch = productDetailsText.match(/(\d+(?:\.\d+)?)\s*(?:inches|")[^x]*x[^0-9]*(\d+(?:\.\d+)?)\s*(?:feet|')/i) ||
+                              productDetailsText.match(/(\d+(?:\.\d+)?)"\s*x\s*(\d+(?:\.\d+)?)'/)
+      if (dimensionMatch) {
+        if (finalRollWidth === null) {
+          finalRollWidth = parseFloat(dimensionMatch[1])
+          console.log('📏 Extracted rollWidth from productDetails:', finalRollWidth)
+        }
+        if (finalRollLength === null) {
+          finalRollLength = parseFloat(dimensionMatch[2])
+          console.log('📏 Extracted rollLength from productDetails:', finalRollLength)
+        }
+      }
+    }
+    
     const cleanedData = {
       asin: productData.asin || null,
       type: productData.type || null,
@@ -378,13 +404,21 @@ export async function parseAmazonProduct(ollamaClient, model, url, asin, html) {
       size: productData.size || null,
       quantity: productData.quantity !== undefined ? productData.quantity : null,
       dimensions: productData.dimensions || null,
-      rollLength: productData.rollLength !== undefined ? productData.rollLength : null,
-      rollWidth: productData.rollWidth !== undefined ? productData.rollWidth : null,
+      rollLength: finalRollLength,
+      rollWidth: finalRollWidth,
       printNames: Array.isArray(productData.printNames) ? productData.printNames : (productData.printNames === null ? null : []),
       rolls: Array.isArray(productData.rolls) ? productData.rolls : (productData.rolls === null ? null : []),
       thumbnail: productData.thumbnail || extractedText.thumbnail || null,
       images: Array.isArray(productData.images) ? productData.images : [],
       url: productData.url || (productAsin ? `https://www.amazon.com/dp/${productAsin}` : null)
+    }
+    
+    // Log what was extracted
+    if (extractedText.thumbnail && !productData.thumbnail) {
+      console.log('✅ Using extracted thumbnail (Ollama did not return one):', extractedText.thumbnail.substring(0, 100) + '...')
+    }
+    if (finalRollLength !== null || finalRollWidth !== null) {
+      console.log('📏 Final roll dimensions:', { rollLength: finalRollLength, rollWidth: finalRollWidth })
     }
     
     // Validate rolls array structure if present
