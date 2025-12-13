@@ -324,15 +324,85 @@ export async function parseAmazonProduct(ollamaClient, model, url, asin, html) {
     jsonText = jsonMatch[0]
     console.log('📋 Extracted JSON text:', jsonText.substring(0, 500))
     
+    // Try to repair incomplete JSON before parsing
+    let originalJsonText = jsonText
+    try {
+      // Check for incomplete string values (property that ends with unclosed quote)
+      // Pattern: "key": "value that is not closed...
+      const incompleteStringPattern = /"[^"]+"\s*:\s*"[^"]*$/m
+      if (incompleteStringPattern.test(jsonText)) {
+        // Find the last complete property before the incomplete one
+        // Match complete properties: "key": "value" or "key": number or "key": bool/null/array/object
+        const completePropertyPattern = /"[^"]+"\s*:\s*(?:"[^"]*"|[\d.]+|true|false|null|\[[^\]]*\]|\{[^}]*\})/g
+        const matches = []
+        let match
+        while ((match = completePropertyPattern.exec(jsonText)) !== null) {
+          matches.push({
+            text: match[0],
+            index: match.index,
+            endIndex: match.index + match[0].length
+          })
+        }
+        
+        if (matches.length > 0) {
+          const lastCompleteMatch = matches[matches.length - 1]
+          // Remove everything after the last complete property and close the object
+          jsonText = jsonText.substring(0, lastCompleteMatch.endIndex) + '\n}'
+          console.log(`🔧 Repaired JSON by removing incomplete trailing content after property at position ${lastCompleteMatch.endIndex}`)
+        }
+      }
+      
+      // Try to close unclosed objects/arrays
+      const openBraces = (jsonText.match(/{/g) || []).length
+      const closeBraces = (jsonText.match(/}/g) || []).length
+      const openBrackets = (jsonText.match(/\[/g) || []).length
+      const closeBrackets = (jsonText.match(/\]/g) || []).length
+      
+      // Close unclosed brackets first
+      if (openBrackets > closeBrackets) {
+        jsonText += ']'.repeat(openBrackets - closeBrackets)
+        console.log(`🔧 Closed ${openBrackets - closeBrackets} unclosed array(s)`)
+      }
+      
+      // Close unclosed braces
+      if (openBraces > closeBraces) {
+        jsonText += '}'.repeat(openBraces - closeBraces)
+        console.log(`🔧 Closed ${openBraces - closeBraces} unclosed object(s)`)
+      }
+    } catch (repairError) {
+      console.warn('⚠️ JSON repair attempt failed, will try original:', repairError.message)
+      jsonText = originalJsonText
+    }
+    
     // Parse JSON
     let productData
     try {
       productData = JSON.parse(jsonText)
       console.log('✅ Parsed product data:', JSON.stringify(productData, null, 2))
     } catch (parseError) {
-      console.error('❌ Failed to parse JSON. Text:', jsonText.substring(0, 500))
+      // Log full JSON for debugging (truncated to avoid huge logs)
+      console.error('❌ Failed to parse JSON. Full JSON text length:', jsonText.length)
+      console.error('❌ JSON text (first 1000 chars):', jsonText.substring(0, 1000))
+      console.error('❌ JSON text (last 500 chars):', jsonText.substring(Math.max(0, jsonText.length - 500)))
       console.error('❌ Parse error:', parseError.message)
-      throw new Error(`Failed to parse JSON response: ${parseError.message}`)
+      console.error('❌ Parse error position:', parseError.message.match(/position (\d+)/)?.[1] || 'unknown')
+      
+      // Try one more time with a simpler fix: remove everything after the last complete property
+      try {
+        // Find the last complete key-value pair
+        const completePairs = jsonText.match(/"[^"]+":\s*(?:"[^"]*"|[\d.]+|true|false|null|\[[^\]]*\]|\{[^}]*\})/g)
+        if (completePairs && completePairs.length > 0) {
+          const lastCompletePair = completePairs[completePairs.length - 1]
+          const lastIndex = jsonText.lastIndexOf(lastCompletePair) + lastCompletePair.length
+          const fixedJson = jsonText.substring(0, lastIndex) + '\n}'
+          productData = JSON.parse(fixedJson)
+          console.log('✅ Successfully parsed JSON after removing incomplete trailing content')
+        } else {
+          throw parseError
+        }
+      } catch (finalError) {
+        throw new Error(`Failed to parse JSON response: ${parseError.message}`)
+      }
     }
     
     // Ensure ASIN is set
